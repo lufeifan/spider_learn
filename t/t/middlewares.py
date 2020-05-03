@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-from scrapy import signals
-import random
-import pymongo,json
-from scrapy.utils.project import get_project_settings
-settings = get_project_settings()
+# Define here the models for your spider middleware
+#
+# See documentation in:
+# https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
-class JuejinspiderSpiderMiddleware(object):
+from scrapy import signals
+
+
+class TSpiderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the spider middleware does not modify the
     # passed objects.
@@ -54,7 +56,7 @@ class JuejinspiderSpiderMiddleware(object):
         spider.logger.info('Spider opened: %s' % spider.name)
 
 
-class JuejinspiderDownloaderMiddleware(object):
+class TDownloaderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the downloader middleware does not modify the
     # passed objects.
@@ -99,24 +101,3 @@ class JuejinspiderDownloaderMiddleware(object):
 
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
-
-# 随机请求头
-class UserAgentMiddleware(object):
-
-    def process_request(self, request, spider):
-        request.headers['User-Agent'] = random.choice(settings['USER_AGENT_LIST'])
-
-# 随机代理
-class ProxyMiddleware(object):
-    def __init__(self):
-        self.myclient = pymongo.MongoClient("mongodb://localhost:27017/")
-        self.mydb = self.myclient["proxies"]
-        self.mycol = self.mydb["proxy"]
-    
-    def process_request(self, request, spider):
-
-        # 从数据库选择proxy
-        proxy =[i['proxy'] for i in self.mycol.aggregate([ {'$sample': {'size':1}}])]
-        request.meta['proxies'] = proxy[0]
-        print(request.meta)
-

@@ -1,12 +1,55 @@
 # -*- coding: utf-8 -*-
 
+# Define here the models for your spider middleware
+#
+# See documentation in:
+# https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+
 from scrapy import signals
 import random
 import pymongo,json
+from scrapy.downloadermiddlewares.retry import RetryMiddleware
+from scrapy.utils.response import response_status_message
+
 from scrapy.utils.project import get_project_settings
 settings = get_project_settings()
 
-class JuejinspiderSpiderMiddleware(object):
+# 随机请求头
+class UserAgentMiddleware(object):
+
+    def process_request(self, request, spider):
+        request.headers['User-Agent'] = random.choice(settings['USER_AGENT_LIST'])
+
+# 随机代理
+class ProxyMiddleware(object):
+    def __init__(self):
+        self.myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+        self.mydb = self.myclient["proxies"]
+        self.mycol = self.mydb["proxy"]
+    
+    def process_request(self, request, spider):
+
+        # 从数据库选择proxy
+        proxy =[i['proxy'] for i in self.mycol.aggregate([ {'$sample': {'size':1}}])]
+        request.meta['proxies'] = proxy[0]
+        # print(request.meta)
+
+    def process_response(self, request, response, spider):
+        # Called with the response returned from the downloader.
+        if response.status == 404:
+            print("资源尚未找到 404")
+        elif response.status >= 400:
+            print("ip可能被封了")
+        else:
+            print(response.status)
+        
+        # Must either;
+        # - return a Response object
+        # - return a Request object
+        # - or raise IgnoreRequest
+        return response
+
+class ZhihuSpiderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the spider middleware does not modify the
     # passed objects.
@@ -28,9 +71,10 @@ class JuejinspiderSpiderMiddleware(object):
     def process_spider_output(self, response, result, spider):
         # Called with the results returned from the Spider, after
         # it has processed the response.
-
+        # print(response.meta)
         # Must return an iterable of Request, dict or Item objects.
         for i in result:
+            # print(i)
             yield i
 
     def process_spider_exception(self, response, exception, spider):
@@ -47,14 +91,15 @@ class JuejinspiderSpiderMiddleware(object):
         # that it doesn’t have a response associated.
 
         # Must return only requests (not items).
+        # 爬虫开始运行
         for r in start_requests:
+            # print(r)
             yield r
 
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
 
-
-class JuejinspiderDownloaderMiddleware(object):
+class ZhihuDownloaderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the downloader middleware does not modify the
     # passed objects.
@@ -100,23 +145,33 @@ class JuejinspiderDownloaderMiddleware(object):
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
 
-# 随机请求头
-class UserAgentMiddleware(object):
+class My_RetryMiddleware(RetryMiddleware):
 
-    def process_request(self, request, spider):
-        request.headers['User-Agent'] = random.choice(settings['USER_AGENT_LIST'])
+    def __init__(self, settings):
+        self.max_retry_times = settings.getint('RETRY_TIMES')
+        self.retry_http_codes = set(int(x) for x in settings.getlist('RETRY_HTTP_CODES'))
+        self.priority_adjust = settings.getint('RETRY_PRIORITY_ADJUST')
+ 
+    def process_response(self, request, response, spider):
+        if response.status in self.retry_http_codes:
+            reason = response_status_message(response.status)
+            try:
+                print("连接异常, 进行重试... 错误码："+ reason)
+                # 将爬取失败的URL存下来，你也可以存到别的存储
+                with open(str(spider.name)+"_erro" + ".txt", "a") as f:
+                    f.write(response.url + "\n")
 
-# 随机代理
-class ProxyMiddleware(object):
-    def __init__(self):
-        self.myclient = pymongo.MongoClient("mongodb://localhost:27017/")
-        self.mydb = self.myclient["proxies"]
-        self.mycol = self.mydb["proxy"]
-    
-    def process_request(self, request, spider):
+            except :
+                print('获取失败！')
+                spider.logger.error('获取失败！')
 
-        # 从数据库选择proxy
-        proxy =[i['proxy'] for i in self.mycol.aggregate([ {'$sample': {'size':1}}])]
-        request.meta['proxies'] = proxy[0]
-        print(request.meta)
+            return self._retry(request, reason, spider) or response
 
+        return response
+ 
+    def process_exception(self, request, exception, spider):
+    # 出现异常的处理
+        if isinstance(exception, self.EXCEPTIONS_TO_RETRY):
+            with open(str(spider.name)+"_erro" + ".txt", "a") as f:
+                f.write(str(request) + "\n")
+            return None

@@ -10,9 +10,13 @@ import scrapy
 
 class JuejinspiderItem(scrapy.Item):
     # define the fields for your item here like:
-    category = scrapy.Field()
-    tagsid = scrapy.Field()
+    categoryid = scrapy.Field()
+    categoryname = scrapy.Field()
     order = scrapy.Field()
-    data = scrapy.Field()
+    tagsid = scrapy.Field()
+    tagname = scrapy.Field()
     title = scrapy.Field()
+    originalUrl =scrapy.Field()
+    readcount =scrapy.Field()
+    pagesdetail = scrapy.Field()
     pass
